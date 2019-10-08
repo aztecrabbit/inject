@@ -20,10 +20,10 @@ class inject_handler(socketserver.BaseRequestHandler):
 
         self.server.buffer_size = 65535
         self.server.default_log_type = 1
-        self.server.socket_tunnel_timeout = 3
+        self.server.socket_server_timeout = 3
 
         self.socket_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket_server.settimeout(self.server.socket_tunnel_timeout)
+        self.socket_server.settimeout(self.server.socket_server_timeout)
 
         if not hasattr(self.server, 'stop'):
             self.server.stop = False
@@ -134,7 +134,7 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.socket_server.sendall(self.payload_decode(payload_split[i]))
 
     def certificate(self):
-        self.log('Certificate:\n\n{}'.format(ssl.DER_cert_to_PEM_cert(self.socket_server.getpeercert(True))))
+        self.log(f'Certificate:\n\n{ssl.DER_cert_to_PEM_cert(self.socket_server.getpeercert(True))}', type=2)
 
     def convert_response(self, response):
         response = response.replace('\r', '').rstrip() + '\n\n'
@@ -161,9 +161,9 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.send_payload(self.payload)
             self.handler()
         except socket.timeout:
-            self.log('Connection timeout', color='[R1]')
+            self.log('Connection timeout', color='[R1]', type=2)
         except socket.error:
-            self.log('Connection closed', color='[R1]')
+            self.log('Connection closed', color='[R1]', type=2)
         finally:
             self.close_request()
 
@@ -181,14 +181,14 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.server.libredsocks.rule_direct_update(self.client_request_host)
             self.log(f'Connecting to {self.client_request_host} port {self.client_request_port}')
             self.socket_server.connect((str(self.client_request_host), int(self.client_request_port)))
-            self.log(f'Server name indication: {self.server_name_indication}')
+            self.log(f'Server name indication: {self.server_name_indication}', type=2)
             self.socket_server = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2).wrap_socket(self.socket_server, server_hostname=self.server_name_indication, do_handshake_on_connect=True)
             self.certificate()
             self.handler()
         except socket.timeout:
-            self.log('Connection timeout', color='[R1]')
+            self.log('Connection timeout', color='[R1]', type=2)
         except socket.error:
-            self.log('Connection closed', color='[R1]')
+            self.log('Connection closed', color='[R1]', type=2)
         finally:
             self.close_request()
 
