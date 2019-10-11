@@ -8,10 +8,8 @@ from ..log.log import log
 from ..utils.utils import utils
 from ..redsocks.redsocks import redsocks
 
-socketserver.TCPServer.allow_reuse_address = True
-
 class inject(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    pass
+    allow_reuse_address = True
 
 class inject_handler(socketserver.BaseRequestHandler):
 
@@ -37,12 +35,7 @@ class inject_handler(socketserver.BaseRequestHandler):
         if not hasattr(self.server, 'rules'):
             self.server.rules = [
                 {
-                    'target-list': [
-                        {
-                            "hosts": ['*'],
-                            "ports": ['*'],
-                        }
-                    ],
+                    'target-list': [''],
                     'tunnel-type': '0',
                     'remote-proxies': [''],
                     'direct-payloads': [''],
@@ -68,20 +61,13 @@ class inject_handler(socketserver.BaseRequestHandler):
 
     def check_client_request_in_rule(self, rule):
         for target in rule['target-list']:
-            for target_host in target['hosts']:
-                target_host_found = False
-                if target_host == '*' or target_host in self.client_request_host:
-                    target_host_found = True
-                    break
+            target_host_port = target.split(':')
+            target_host = target_host_port[0] if target_host_port[0] else '*'
+            target_port = target_host_port[1] if len(target_host_port) >= 2 and target_host_port[1] else '*'
 
-            if not target_host_found:
-                continue
-
-            if self.client_request_port not in target['ports'] and \
-                '*' not in target['ports']:
-                continue
-
-            return True
+            if (target_host == '*' or target_host in self.client_request_host) and \
+               (target_port == '*' or target_port == self.client_request_port):
+                return True
 
         return False
 
@@ -228,6 +214,31 @@ class inject_handler(socketserver.BaseRequestHandler):
         finally:
             self.close_request()
 
+    def tunnel_type_3(self):
+        if not isinstance(self.remote_proxies, list) and self.remote_proxies:
+            self.remote_proxies = [self.remote_proxy]
+
+        if not len(self.remote_proxies) or not self.server.utils.xfilter(self.remote_proxies):
+            self.remote_proxies = [f'{self.client_request_host}:{self.client_request_port}']
+
+        try:
+            self.remote_proxy = random.choice(self.remote_proxies).split(':')
+            self.remote_proxy_host = str(self.remote_proxy[0])
+            self.remote_proxy_port = int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80')
+
+            self.server.libredsocks.rule_direct_update(self.remote_proxy_host)
+            #self.log(f'Connecting to remote proxy {self.remote_proxy_host} port {self.remote_proxy_port}', type=2)
+            self.socket_server.connect((self.remote_proxy_host, self.remote_proxy_port))
+            # self.log(f'Connecting to {self.client_request_host} port {self.client_request_port}')
+            self.log(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', type=2)
+            self.handler()
+        except socket.timeout:
+            self.log('Connection timeout', color='[R1]', type=2)
+        except socket.error:
+            self.log('Connection closed', color='[R1]', type=2)
+        finally:
+            self.close_request()
+
     def proxy_handler(self):
         i = 0
         while True:
@@ -271,18 +282,11 @@ class inject_handler(socketserver.BaseRequestHandler):
         self.server.close_request(self.request)
 
     def handle(self):
-        if not self.check_client_request():
-            self.request.sendall('HTTP/1.1 403 Forbidden from Brainfuck Lib Inject.py\r\n\r\n'.encode())
+        if not self.check_client_request() or not self.tunnel_type or self.tunnel_type == '#':
+            self.request.sendall('HTTP/1.1 403 Forbidden from Brainfuck Tunnel Libraries (inject.py)\r\n\r\n'.encode())
             self.server.close_request(self.request)
-            return
-
-        if not self.tunnel_type:
-            return
 
         elif self.tunnel_type == '0': self.tunnel_type_0()
         elif self.tunnel_type == '1': self.tunnel_type_1()
         elif self.tunnel_type == '2': self.tunnel_type_2()
-        '''elif self.tunnel_type == '3': self.tunnel_type_3()
-        
-        TODO: domain fronting
-        '''
+        elif self.tunnel_type == '3': self.tunnel_type_3()
