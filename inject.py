@@ -53,11 +53,16 @@ class inject_handler(socketserver.BaseRequestHandler):
         self.server.liblog.log(value, color=color, type=type)
 
     def extract_client_request_payload(self):
-        self.client_request_payload = self.request.recv(self.server.buffer_size).decode('charmap')
-        self.client_request_payload_find = re.findall(r'([^/]+(\.[^/:]+)+)(:([0-9]+))?', self.client_request_payload.split(' ')[1])[0]
-        self.client_request_host = self.client_request_payload_find[0]
-        self.client_request_port = self.client_request_payload_find[3] if len(self.client_request_payload_find) >= 4 and \
-            len(self.client_request_payload_find[3]) else '80'
+        try:
+            self.client_request_payload = self.request.recv(self.server.buffer_size).decode('charmap')
+            self.client_request_payload_find = re.findall(r'([^/]+(\.[^/:]+)+)(:([0-9]+))?', self.client_request_payload.split(' ')[1])[0]
+            self.client_request_host = self.client_request_payload_find[0]
+            self.client_request_port = self.client_request_payload_find[3] if len(self.client_request_payload_find) >= 4 and \
+                len(self.client_request_payload_find[3]) else '80'
+        except IndexError:
+            return False
+        else:
+            return True
 
     def check_client_request_in_rule(self, rule):
         for target in rule['target-list']:
@@ -72,7 +77,8 @@ class inject_handler(socketserver.BaseRequestHandler):
         return False
 
     def check_client_request(self):
-        self.extract_client_request_payload()
+        if not self.extract_client_request_payload():
+            return False
 
         for rule in self.server.rules:
             if not self.check_client_request_in_rule(rule):
@@ -231,7 +237,7 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.socket_server.connect((self.remote_proxy_host, self.remote_proxy_port))
             # self.log(f'Connecting to {self.client_request_host} port {self.client_request_port}')
             self.log(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', type=2)
-            self.handler()
+            self.handler(type=3)
         except socket.timeout:
             self.log('Connection timeout', color='[R1]', type=2)
         except socket.error:
@@ -254,11 +260,11 @@ class inject_handler(socketserver.BaseRequestHandler):
                 self.log('Response: {}'.format(self.convert_response(response)), type=2)
                 i += 1
 
-    def handler(self):
+    def handler(self, type=2):
         sockets = [self.request, self.socket_server]
         timeout = 0
         self.request.sendall(b'HTTP/1.0 200 Connection established\r\n\r\n')
-        self.log('Connection established', type=2)
+        self.log('Connection established', type=type)
         while True:
             timeout += 1
             socket_io, _, errors = select.select(sockets, [], sockets, 3)
