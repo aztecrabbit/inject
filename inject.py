@@ -52,6 +52,9 @@ class inject_handler(socketserver.BaseRequestHandler):
 
         self.server.liblog.log(value, color=color, type=type)
 
+    def log_replace(self, value, color='[G1]'):
+        self.server.liblog.log_replace(value, color=color)
+
     def extract_client_request_payload(self):
         try:
             self.client_request_payload = self.request.recv(self.server.buffer_size).decode('charmap')
@@ -233,10 +236,9 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.remote_proxy_port = int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80')
 
             self.server.libredsocks.rule_direct_update(self.remote_proxy_host)
-            #self.log(f'Connecting to remote proxy {self.remote_proxy_host} port {self.remote_proxy_port}', type=2)
             self.socket_server.connect((self.remote_proxy_host, self.remote_proxy_port))
-            # self.log(f'Connecting to {self.client_request_host} port {self.client_request_port}')
             self.log(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', type=2)
+            self.log_replace(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', color='[G2]')
             self.handler(type=3)
         except socket.timeout:
             self.log('Connection timeout', color='[R1]', type=2)
