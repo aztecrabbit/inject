@@ -71,7 +71,7 @@ class inject_handler(socketserver.BaseRequestHandler):
         for target in rule['target-list']:
             target_host_port = target.split(':')
             target_host = target_host_port[0] if target_host_port[0] else '*'
-            target_port = target_host_port[1] if len(target_host_port) >= 2 and target_host_port[1] else '*'
+            target_port = target_host_port[1] if len(target_host_port) >= 2 and target_host_port[1] else '80'
 
             if (target_host == '*' or target_host in self.client_request_host) and \
                (target_port == '*' or target_port == self.client_request_port):
