@@ -225,13 +225,16 @@ class inject_handler(socketserver.BaseRequestHandler):
 
     def tunnel_type_3(self):
         if not isinstance(self.remote_proxies, list) and self.remote_proxies:
-            self.remote_proxies = [self.remote_proxy]
+            self.remote_proxies = [self.remote_proxies]
 
         if not len(self.remote_proxies) or not self.server.utils.xfilter(self.remote_proxies):
             self.remote_proxies = [f'{self.client_request_host}:{self.client_request_port}']
 
         try:
-            self.remote_proxy = random.choice(self.remote_proxies).split(':')
+            with self.server.liblog.lock:
+                remote_proxy = self.remote_proxies.pop(0)
+                self.remote_proxies.append(remote_proxy)
+            self.remote_proxy = remote_proxy.split(':')
             self.remote_proxy_host = str(self.remote_proxy[0])
             self.remote_proxy_port = int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80')
 
