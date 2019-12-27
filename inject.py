@@ -1,5 +1,6 @@
 import re
 import ssl
+import time
 import socket
 import select
 import random
@@ -8,8 +9,10 @@ from ..log.log import log
 from ..utils.utils import utils
 from ..redsocks.redsocks import redsocks
 
+
 class inject(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+
 
 class inject_handler(socketserver.BaseRequestHandler):
 
@@ -25,7 +28,7 @@ class inject_handler(socketserver.BaseRequestHandler):
 
         if not hasattr(self.server, 'stop'):
             self.server.stop = False
-        
+
         if not hasattr(self.server, 'liblog'):
             self.server.liblog = log()
 
@@ -58,10 +61,11 @@ class inject_handler(socketserver.BaseRequestHandler):
     def extract_client_request_payload(self):
         try:
             self.client_request_payload = self.request.recv(self.server.buffer_size).decode('charmap')
-            self.client_request_payload_find = re.findall(r'([^/]+(\.[^/:]+)+)(:([0-9]+))?', self.client_request_payload.split(' ')[1])[0]
+            self.client_request_payload_find = (
+                re.findall(r'([^/]+(\.[^/:]+)+)(:([0-9]+))?', self.client_request_payload.split(' ')[1])[0])
             self.client_request_host = self.client_request_payload_find[0]
-            self.client_request_port = self.client_request_payload_find[3] if len(self.client_request_payload_find) >= 4 and \
-                len(self.client_request_payload_find[3]) else '80'
+            self.client_request_port = self.client_request_payload_find[3] if (
+                len(self.client_request_payload_find) >= 4 and len(self.client_request_payload_find[3])) else '80'
         except IndexError:
             return False
         else:
@@ -73,8 +77,8 @@ class inject_handler(socketserver.BaseRequestHandler):
             target_host = target_host_port[0] if target_host_port[0] else '*'
             target_port = target_host_port[1] if len(target_host_port) >= 2 and target_host_port[1] else '80'
 
-            if (target_host == '*' or target_host in self.client_request_host) and \
-               (target_port == '*' or target_port == self.client_request_port):
+            if ((target_host == '*' or target_host in self.client_request_host) and
+                    (target_port == '*' or target_port == self.client_request_port)):
                 return True
 
         return False
@@ -117,7 +121,8 @@ class inject_handler(socketserver.BaseRequestHandler):
 
     def send_payload(self, payload):
         payload = payload if payload else '[method] [host_port] [protocol][crlf][crlf]'
-        self.log('Payload: \n\n{}\n'.format(('|   ' + self.payload_decode(payload).decode())
+        self.log('Payload: \n\n{}\n'.format(
+            ('|   ' + self.payload_decode(payload).decode())
             .replace('\r', '')
             .replace('[split]', '$lf\n')
             .replace('\n', '\n|   ')
@@ -125,7 +130,8 @@ class inject_handler(socketserver.BaseRequestHandler):
         ), type=2)
         payload_split = payload.split('[split]')
         for i in range(len(payload_split)):
-            if i > 0: time.sleep(0.200)
+            if i > 0:
+                time.sleep(0.200)
             self.socket_server.sendall(self.payload_decode(payload_split[i]))
 
     def certificate(self):
@@ -133,7 +139,7 @@ class inject_handler(socketserver.BaseRequestHandler):
 
     def convert_response(self, response):
         response = response.replace('\r', '').rstrip() + '\n\n'
-        
+
         if response.startswith('HTTP'):
             return '\n\n|   {}\n'.format(response.replace('\n', '\n|   '))
 
@@ -177,7 +183,9 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.log(f'Connecting to {self.client_request_host} port {self.client_request_port}')
             self.socket_server.connect((str(self.client_request_host), int(self.client_request_port)))
             self.log(f'Server name indication: {self.server_name_indication}', type=2)
-            self.socket_server = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2).wrap_socket(self.socket_server, server_hostname=self.server_name_indication, do_handshake_on_connect=True)
+            self.socket_server = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2).wrap_socket(
+                self.socket_server, server_hostname=self.server_name_indication, do_handshake_on_connect=True
+            )
             self.certificate()
             self.handler()
         except socket.timeout:
@@ -206,7 +214,8 @@ class inject_handler(socketserver.BaseRequestHandler):
         try:
             self.remote_proxy = random.choice(self.remote_proxies).split(':')
             self.remote_proxy_host = str(self.remote_proxy[0])
-            self.remote_proxy_port = int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80')
+            self.remote_proxy_port = (
+                int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80'))
 
             self.payload = random.choice(self.remote_proxies_payloads)
 
@@ -228,20 +237,34 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.remote_proxies = [self.remote_proxies]
 
         if not len(self.remote_proxies) or not self.server.utils.xfilter(self.remote_proxies):
-            self.remote_proxies = [f'{self.client_request_host}:{self.client_request_port}']
+            self.remote_proxies = [f"{self.client_request_host}:{self.client_request_port}"]
+
+        with self.server.liblog.lock:
+            remote_proxy = self.remote_proxies.pop(0)
+            self.remote_proxies.append(remote_proxy)
 
         try:
-            with self.server.liblog.lock:
-                remote_proxy = self.remote_proxies.pop(0)
-                self.remote_proxies.append(remote_proxy)
             self.remote_proxy = remote_proxy.split(':')
             self.remote_proxy_host = str(self.remote_proxy[0])
-            self.remote_proxy_port = int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80')
+            self.remote_proxy_port = (
+                int(self.remote_proxy[1]) if len(self.remote_proxy) >= 2 and self.remote_proxy[1] else int('80'))
 
             self.server.libredsocks.rule_direct_update(self.remote_proxy_host)
             self.socket_server.connect((self.remote_proxy_host, self.remote_proxy_port))
-            self.log(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', type=2)
-            self.log_replace(f'Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> {self.client_request_host} port {self.client_request_port}', color='[G2]')
+            self.log(
+                (
+                    f"Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> "
+                    f"{self.client_request_host} port {self.client_request_port}"
+                ),
+                type=2,
+            )
+            self.log_replace(
+                (
+                    f"Connecting to {self.remote_proxy_host} port {self.remote_proxy_port} -> "
+                    f"{self.client_request_host} port {self.client_request_port}"
+                ),
+                color='[G2]',
+            )
             self.handler(type=3)
         except socket.timeout:
             self.log('Connection timeout', color='[R1]', type=2)
@@ -253,10 +276,14 @@ class inject_handler(socketserver.BaseRequestHandler):
     def proxy_handler(self):
         i = 0
         while True:
-            if i == 1: self.log('Replacing response', type=2)
+            if i == 1:
+                self.log('Replacing response', type=2)
             response = self.socket_server.recv(self.server.buffer_size).decode('charmap')
-            if not response: break
-            if re.match(r'^HTTP/\d(\.\d)? 200 (Connection established|OK)(\r?\nConnection: keep-alive)?\r?\n\r?\n$', response, re.IGNORECASE):
+            if not response:
+                break
+            if re.match(
+                    r"^HTTP/\d(\.\d)? 200 (Connection established|OK)(\r?\nConnection: keep-alive)?\r?\n\r?\n$",
+                    response, re.IGNORECASE):
                 self.log('Response: {}'.format(self.convert_response(response)), type=2)
                 self.handler()
                 break
@@ -273,20 +300,24 @@ class inject_handler(socketserver.BaseRequestHandler):
         while True:
             timeout += 1
             socket_io, _, errors = select.select(sockets, [], sockets, 3)
-            if errors: break
+            if errors:
+                break
             if socket_io:
                 for sock in socket_io:
                     try:
                         data = sock.recv(self.server.buffer_size)
-                        if not data: break
+                        if not data:
+                            break
                         # SENT -> RECEIVE
                         elif sock is self.request:
                             self.socket_server.sendall(data)
                         elif sock is self.socket_server:
                             self.request.sendall(data)
                         timeout = 0
-                    except: break
-            if timeout == 30: break
+                    except Exception:
+                        break
+            if timeout == 30:
+                break
 
     def close_request(self):
         self.socket_server.close()
@@ -297,7 +328,14 @@ class inject_handler(socketserver.BaseRequestHandler):
             self.request.sendall('HTTP/1.1 403 Forbidden from Brainfuck Tunnel Libraries (inject.py)\r\n\r\n'.encode())
             self.server.close_request(self.request)
 
-        elif self.tunnel_type == '0': self.tunnel_type_0()
-        elif self.tunnel_type == '1': self.tunnel_type_1()
-        elif self.tunnel_type == '2': self.tunnel_type_2()
-        elif self.tunnel_type == '3': self.tunnel_type_3()
+        elif self.tunnel_type == '0':
+            self.tunnel_type_0()
+
+        elif self.tunnel_type == '1':
+            self.tunnel_type_1()
+
+        elif self.tunnel_type == '2':
+            self.tunnel_type_2()
+
+        elif self.tunnel_type == '3':
+            self.tunnel_type_3()
